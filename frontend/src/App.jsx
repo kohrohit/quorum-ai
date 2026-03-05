@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
 import SettingsPanel from './components/SettingsPanel';
+import PromptRefinement from './components/PromptRefinement';
 import { api } from './api';
 import './App.css';
 
@@ -11,6 +12,8 @@ function App() {
   const [currentConversation, setCurrentConversation] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [refinementData, setRefinementData] = useState(null);
+  const [pendingQuery, setPendingQuery] = useState(null);
 
   useEffect(() => {
     loadConversations();
@@ -61,7 +64,56 @@ function App() {
     window.open(api.getExportUrl(conversationId), '_blank');
   };
 
+  const handleDeleteConversation = async (id) => {
+    try {
+      await api.deleteConversation(id);
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      if (currentConversationId === id) {
+        setCurrentConversationId(null);
+        setCurrentConversation(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete conversation:', error);
+    }
+  };
+
   const handleSendMessage = async (content) => {
+    // Start refinement flow
+    if (!refinementData) {
+      try {
+        const data = await api.refineQuery(content);
+        setRefinementData(data);
+        setPendingQuery(content);
+        return;
+      } catch (e) {
+        // If refinement fails, send directly
+        console.error('Refinement failed, sending directly:', e);
+      }
+    }
+    setRefinementData(null);
+    setPendingQuery(null);
+    await _sendToCouncil(content);
+  };
+
+  const handleRefinementFinalize = async (answers, roles) => {
+    try {
+      const result = await api.refineFinalize(pendingQuery, refinementData.query_type, answers, roles);
+      setRefinementData(null);
+      await _sendToCouncil(pendingQuery, result.refined_prompt, roles);
+      setPendingQuery(null);
+    } catch (e) {
+      console.error('Finalize failed:', e);
+    }
+  };
+
+  const handleRefinementSkip = () => {
+    const query = pendingQuery;
+    setRefinementData(null);
+    setPendingQuery(null);
+    _sendToCouncil(query);
+  };
+
+  const _sendToCouncil = async (content, refinedPrompt, autoRoles) => {
     if (!currentConversationId) return;
 
     setIsLoading(true);
@@ -164,7 +216,7 @@ function App() {
           default:
             console.log('Unknown event type:', eventType);
         }
-      });
+      }, refinedPrompt, autoRoles);
     } catch (error) {
       console.error('Failed to send message:', error);
       setCurrentConversation((prev) => ({
@@ -184,11 +236,16 @@ function App() {
         onNewConversation={handleNewConversation}
         onOpenSettings={() => setSettingsOpen(true)}
         onExport={handleExport}
+        onDelete={handleDeleteConversation}
       />
       <ChatInterface
         conversation={currentConversation}
         onSendMessage={handleSendMessage}
         isLoading={isLoading}
+        refinementData={refinementData}
+        pendingQuery={pendingQuery}
+        onRefinementFinalize={handleRefinementFinalize}
+        onRefinementSkip={handleRefinementSkip}
       />
       <SettingsPanel
         isOpen={settingsOpen}

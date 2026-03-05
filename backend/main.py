@@ -13,6 +13,7 @@ from . import storage
 from .council import stage1_collect_responses, run_consensus_loop, generate_conversation_title
 from .settings import load_settings, update_settings
 from .config import AVAILABLE_MODELS, MODEL_COSTS
+from .prompt_engineer import classify_query, generate_clarifying_questions, auto_assign_roles, build_refined_prompt
 
 app = FastAPI(title="Quorum AI API")
 
@@ -31,6 +32,19 @@ class CreateConversationRequest(BaseModel):
 
 class SendMessageRequest(BaseModel):
     content: str
+    refined_prompt: Optional[str] = None
+    auto_roles: Optional[Dict[str, str]] = None
+
+
+class RefineRequest(BaseModel):
+    content: str
+
+
+class RefineFinalizeRequest(BaseModel):
+    content: str
+    query_type: str
+    answers: Dict[str, str]
+    roles: Dict[str, str]
 
 
 class UpdateSettingsRequest(BaseModel):
@@ -101,6 +115,34 @@ async def put_settings(request: UpdateSettingsRequest):
         "available_models": AVAILABLE_MODELS,
         "model_costs": MODEL_COSTS,
     }
+
+
+# ── Prompt refinement endpoints ──
+
+@app.post("/api/refine")
+async def refine_query(request: RefineRequest):
+    settings = load_settings()
+    query_type = classify_query(request.content)
+    questions = generate_clarifying_questions(request.content, query_type)
+    suggested_roles = auto_assign_roles(query_type, settings.get("council_models", []))
+    return {"query_type": query_type, "questions": questions, "suggested_roles": suggested_roles}
+
+
+@app.post("/api/refine/finalize")
+async def refine_finalize(request: RefineFinalizeRequest):
+    refined = build_refined_prompt(request.content, request.query_type, request.answers)
+    return {"refined_prompt": refined, "roles": request.roles}
+
+
+# ── Delete conversation ──
+
+@app.delete("/api/conversations/{conversation_id}")
+async def delete_conversation(conversation_id: str):
+    try:
+        storage.delete_conversation(conversation_id)
+        return {"status": "deleted"}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 # ── Export endpoint ──
@@ -184,8 +226,9 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
 
             council_models = settings.get("council_models")
             chairman_model = settings.get("chairman_model")
-            roles = settings.get("roles", {})
+            roles = request.auto_roles or settings.get("roles", {})
             consensus_config = settings.get("consensus", {})
+            effective_query = request.refined_prompt or request.content
 
             title_task = None
             if is_first_message:
@@ -194,7 +237,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 )
 
             stage1_results, stage1_metrics = await stage1_collect_responses(
-                request.content, council_models, roles
+                effective_query, council_models, roles
             )
             await queue.put(json.dumps({
                 "type": "stage1_complete",
@@ -211,7 +254,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 }))
 
             consensus_data = await run_consensus_loop(
-                request.content,
+                effective_query,
                 stage1_results,
                 on_round_complete,
                 council_models=council_models,

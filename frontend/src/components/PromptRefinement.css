@@ -1,0 +1,108 @@
+.refinement-panel {
+  background: #f8f9ff;
+  border: 2px solid #d0d8f0;
+  border-radius: 10px;
+  padding: 20px;
+  margin: 16px 0;
+}
+
+.refinement-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.refinement-type {
+  font-size: 13px;
+  color: #666;
+}
+
+.skip-btn {
+  padding: 5px 14px;
+  background: none;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  color: #888;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.skip-btn:hover {
+  border-color: #4a90e2;
+  color: #4a90e2;
+}
+
+.refinement-hint {
+  font-size: 13px;
+  color: #555;
+  margin: 0 0 10px;
+}
+
+.refinement-questions {
+  margin-bottom: 16px;
+}
+
+.question-row {
+  margin-bottom: 10px;
+}
+
+.question-row label {
+  display: block;
+  font-size: 13px;
+  color: #444;
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.question-row input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #333;
+}
+
+.refinement-roles {
+  margin-bottom: 16px;
+}
+
+.role-row-mini {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.role-model-mini {
+  min-width: 120px;
+  font-size: 12px;
+  font-family: monospace;
+  color: #666;
+}
+
+.role-row-mini input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #333;
+}
+
+.send-council-btn {
+  width: 100%;
+  padding: 10px;
+  background: #4a90e2;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.send-council-btn:hover {
+  background: #357abd;
+}

@@ -7,6 +7,7 @@ export default function Sidebar({
   onNewConversation,
   onOpenSettings,
   onExport,
+  onDelete,
 }) {
   return (
     <div className="sidebar">
@@ -48,6 +49,13 @@ export default function Sidebar({
                     title="Export as Markdown"
                   >
                     Export
+                  </button>
+                  <button
+                    className="delete-btn"
+                    onClick={(e) => { e.stopPropagation(); onDelete(conv.id); }}
+                    title="Delete conversation"
+                  >
+                    x
                   </button>
                 )}
               </div>

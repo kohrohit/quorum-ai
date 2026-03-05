@@ -4,12 +4,17 @@ import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage3 from './Stage3';
 import MetricsDashboard from './MetricsDashboard';
+import PromptRefinement from './PromptRefinement';
 import './ChatInterface.css';
 
 export default function ChatInterface({
   conversation,
   onSendMessage,
   isLoading,
+  refinementData,
+  pendingQuery,
+  onRefinementFinalize,
+  onRefinementSkip,
 }) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef(null);
@@ -125,6 +130,15 @@ export default function ChatInterface({
               )}
             </div>
           ))
+        )}
+
+        {refinementData && (
+          <PromptRefinement
+            query={pendingQuery}
+            refinementData={refinementData}
+            onFinalize={onRefinementFinalize}
+            onSkip={onRefinementSkip}
+          />
         )}
 
         {isLoading && (
