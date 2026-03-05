@@ -27,13 +27,16 @@ export const api = {
     return response.json();
   },
 
-  async sendMessageStream(conversationId, content, onEvent) {
+  async sendMessageStream(conversationId, content, onEvent, refinedPrompt, autoRoles) {
+    const body = { content };
+    if (refinedPrompt) body.refined_prompt = refinedPrompt;
+    if (autoRoles) body.auto_roles = autoRoles;
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}/message/stream`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify(body),
       }
     );
     if (!response.ok) throw new Error('Failed to send message');
@@ -59,6 +62,36 @@ export const api = {
         }
       }
     }
+  },
+
+  // ── Delete ──
+
+  async deleteConversation(conversationId) {
+    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error('Failed to delete conversation');
+    return response.json();
+  },
+
+  // ── Prompt Refinement ──
+
+  async refineQuery(content) {
+    const response = await fetch(`${API_BASE}/api/refine`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    });
+    if (!response.ok) throw new Error('Failed to refine query');
+    return response.json();
+  },
+
+  async refineFinalize(content, queryType, answers, roles) {
+    const response = await fetch(`${API_BASE}/api/refine/finalize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content, query_type: queryType, answers, roles }),
+    });
+    if (!response.ok) throw new Error('Failed to finalize refinement');
+    return response.json();
   },
 
   // ── Settings ──
