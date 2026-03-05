@@ -1,4 +1,4 @@
-"""FastAPI backend for LLM Council."""
+"""FastAPI backend for Quorum AI."""
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,7 +14,7 @@ from .council import stage1_collect_responses, run_consensus_loop, generate_conv
 from .settings import load_settings, update_settings
 from .config import AVAILABLE_MODELS, MODEL_COSTS
 
-app = FastAPI(title="LLM Council API")
+app = FastAPI(title="Quorum AI API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -58,7 +58,7 @@ class Conversation(BaseModel):
 
 @app.get("/")
 async def root():
-    return {"status": "ok", "service": "LLM Council API"}
+    return {"status": "ok", "service": "Quorum AI API"}
 
 
 @app.get("/api/conversations", response_model=List[ConversationMetadata])
@@ -123,7 +123,7 @@ async def export_conversation(conversation_id: str):
 def _conversation_to_markdown(conv: Dict[str, Any]) -> str:
     """Convert a conversation to markdown format."""
     lines = [
-        f"# LLM Council: {conv.get('title', 'Conversation')}",
+        f"# Quorum AI: {conv.get('title', 'Conversation')}",
         f"*Created: {conv.get('created_at', 'Unknown')}*\n",
         "---\n",
     ]
