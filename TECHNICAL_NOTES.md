@@ -1,4 +1,4 @@
-# CLAUDE.md - Technical Notes for LLM Council
+# Technical Notes - Quorum AI
 
 This file contains technical details, architectural decisions, and important implementation notes for future development sessions.
 
