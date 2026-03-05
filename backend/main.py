@@ -13,7 +13,7 @@ from . import storage
 from .council import stage1_collect_responses, run_consensus_loop, generate_conversation_title
 from .settings import load_settings, update_settings
 from .config import AVAILABLE_MODELS, MODEL_COSTS
-from .prompt_engineer import classify_query, generate_clarifying_questions, auto_assign_roles, build_refined_prompt
+from .prompt_engineer import classify_and_refine, build_refined_prompt
 
 app = FastAPI(title="Quorum AI API")
 
@@ -122,15 +122,13 @@ async def put_settings(request: UpdateSettingsRequest):
 @app.post("/api/refine")
 async def refine_query(request: RefineRequest):
     settings = load_settings()
-    query_type = classify_query(request.content)
-    questions = generate_clarifying_questions(request.content, query_type)
-    suggested_roles = auto_assign_roles(query_type, settings.get("council_models", []))
-    return {"query_type": query_type, "questions": questions, "suggested_roles": suggested_roles}
+    result = await classify_and_refine(request.content, settings.get("council_models"))
+    return result
 
 
 @app.post("/api/refine/finalize")
 async def refine_finalize(request: RefineFinalizeRequest):
-    refined = build_refined_prompt(request.content, request.query_type, request.answers)
+    refined = await build_refined_prompt(request.content, request.query_type, request.answers)
     return {"refined_prompt": refined, "roles": request.roles}
 
 
