@@ -63,3 +63,21 @@
   color: #333;
   line-height: 1.6;
 }
+
+.role-tag {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 6px;
+  margin-left: 6px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  border-radius: 8px;
+  font-weight: 500;
+  vertical-align: middle;
+}
+
+.role-label {
+  color: #2e7d32;
+  font-style: italic;
+  font-size: 12px;
+}

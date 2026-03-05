@@ -10,12 +10,46 @@
   border: 1px solid #c8e6c8;
 }
 
+.final-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
 .chairman-label {
   color: #2d8a2d;
   font-size: 12px;
   font-family: monospace;
-  margin-bottom: 12px;
   font-weight: 600;
+}
+
+.consensus-type-badge {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+.consensus-type-badge.unanimous {
+  background: #e8f5e9;
+  color: #1b5e20;
+}
+
+.consensus-type-badge.majority {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.consensus-type-badge.chairman {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.consensus-type-badge.error {
+  background: #ffebee;
+  color: #c62828;
 }
 
 .final-text {

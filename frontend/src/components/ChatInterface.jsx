@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage3 from './Stage3';
+import MetricsDashboard from './MetricsDashboard';
 import './ChatInterface.css';
 
 export default function ChatInterface({
@@ -30,7 +31,6 @@ export default function ChatInterface({
   };
 
   const handleKeyDown = (e) => {
-    // Submit on Enter (without Shift)
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
@@ -76,34 +76,51 @@ export default function ChatInterface({
                   {msg.loading?.stage1 && (
                     <div className="stage-loading">
                       <div className="spinner"></div>
-                      <span>Running Stage 1: Collecting individual responses...</span>
+                      <span>Stage 1: Collecting individual responses...</span>
                     </div>
                   )}
                   {msg.stage1 && <Stage1 responses={msg.stage1} />}
 
-                  {/* Stage 2 */}
-                  {msg.loading?.stage2 && (
+                  {/* Stage 2: Consensus */}
+                  {msg.loading?.consensus && (!(msg.consensusRounds || msg.stage2) || (msg.consensusRounds || msg.stage2 || []).length === 0) && (
                     <div className="stage-loading">
                       <div className="spinner"></div>
-                      <span>Running Stage 2: Peer rankings...</span>
+                      <span>Stage 2: Starting consensus deliberation...</span>
                     </div>
                   )}
-                  {msg.stage2 && (
-                    <Stage2
-                      rankings={msg.stage2}
-                      labelToModel={msg.metadata?.label_to_model}
-                      aggregateRankings={msg.metadata?.aggregate_rankings}
-                    />
+                  {msg.loading?.consensus && (msg.consensusRounds || msg.stage2) && (msg.consensusRounds || msg.stage2 || []).length > 0 && (
+                    <div className="stage-loading">
+                      <div className="spinner"></div>
+                      <span>Stage 2: Round {(msg.consensusRounds || msg.stage2 || []).length + 1} in progress...</span>
+                    </div>
+                  )}
+                  {(msg.consensusRounds || msg.stage2) && (msg.consensusRounds || msg.stage2).length > 0 && (
+                    <Stage2 rounds={msg.consensusRounds || msg.stage2} />
                   )}
 
-                  {/* Stage 3 */}
+                  {/* Stage 3: Final */}
                   {msg.loading?.stage3 && (
                     <div className="stage-loading">
                       <div className="spinner"></div>
-                      <span>Running Stage 3: Final synthesis...</span>
+                      <span>Stage 3: Generating final answer...</span>
                     </div>
                   )}
-                  {msg.stage3 && <Stage3 finalResponse={msg.stage3} />}
+                  {(msg.stage3) && (
+                    <Stage3
+                      finalResponse={msg.stage3}
+                      consensusType={msg.consensusType}
+                      finalRound={msg.finalRound}
+                      totalRounds={msg.totalRounds}
+                    />
+                  )}
+
+                  {/* Metrics Dashboard */}
+                  {(msg.stage1Metrics || msg.finalMetrics) && (
+                    <MetricsDashboard
+                      stage1Metrics={msg.stage1Metrics}
+                      finalMetrics={msg.finalMetrics}
+                    />
+                  )}
                 </div>
               )}
             </div>

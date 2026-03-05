@@ -13,79 +13,120 @@
   margin-top: 0;
 }
 
-.stage-description {
-  margin: 0 0 12px 0;
-  color: #666;
+.subsection-title {
+  margin: 16px 0 8px 0;
+  color: #555;
   font-size: 13px;
-  line-height: 1.5;
+  font-weight: 600;
 }
 
-.aggregate-rankings {
-  background: #f0f7ff;
-  padding: 16px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  border: 2px solid #d0e7ff;
-}
-
-.aggregate-rankings h4 {
-  margin: 0 0 12px 0;
-  color: #2a7ae2;
-  font-size: 15px;
-}
-
-.aggregate-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.aggregate-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px;
-  background: #ffffff;
-  border-radius: 6px;
-  border: 1px solid #d0e7ff;
-}
-
-.rank-position {
-  color: #2a7ae2;
-  font-weight: 700;
-  font-size: 16px;
-  min-width: 35px;
-}
-
-.rank-model {
-  flex: 1;
-  color: #333;
-  font-family: monospace;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.rank-score {
-  color: #666;
-  font-size: 13px;
-  font-family: monospace;
-}
-
-.stage2 .tabs {
+/* Round tabs */
+.round-tabs {
   display: flex;
   gap: 8px;
   margin-bottom: 16px;
   flex-wrap: wrap;
 }
 
-.stage2 .tab {
+.round-tab {
   padding: 8px 16px;
+  background: #ffffff;
+  border: 2px solid #d0d0d0;
+  border-radius: 8px;
+  color: #666;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.round-tab:hover {
+  border-color: #4a90e2;
+  color: #333;
+}
+
+.round-tab.active {
+  background: #f0f7ff;
+  color: #4a90e2;
+  border-color: #4a90e2;
+  font-weight: 600;
+}
+
+.round-tab.consensus {
+  border-color: #4caf50;
+}
+
+.round-tab.consensus.active {
+  background: #f0fff0;
+  color: #2d8a2d;
+  border-color: #4caf50;
+}
+
+.vote-badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.vote-badge.agreed {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.vote-badge.disagreed {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+/* Round details */
+.round-details {
+  background: #ffffff;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.round-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.threshold-label {
+  font-size: 12px;
+  color: #888;
+  font-family: monospace;
+}
+
+.consensus-badge {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  font-weight: 600;
+}
+
+/* Model tabs */
+.stage2 .tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.stage2 .tab {
+  padding: 6px 14px;
   background: #ffffff;
   border: 1px solid #d0d0d0;
   border-radius: 6px 6px 0 0;
   color: #666;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   transition: all 0.2s;
 }
 
@@ -106,16 +147,9 @@
 .stage2 .tab-content {
   background: #ffffff;
   padding: 16px;
-  border-radius: 6px;
+  border-radius: 0 6px 6px 6px;
   border: 1px solid #e0e0e0;
-  margin-bottom: 20px;
-}
-
-.ranking-model {
-  color: #888;
-  font-size: 12px;
-  font-family: monospace;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 .ranking-content {
@@ -124,30 +158,54 @@
   font-size: 14px;
 }
 
-.parsed-ranking {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 2px solid #e0e0e0;
+/* Votes grid */
+.votes-grid {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.parsed-ranking strong {
-  color: #2a7ae2;
-  font-size: 13px;
+.vote-card {
+  flex: 1;
+  min-width: 150px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 2px solid;
 }
 
-.parsed-ranking ol {
-  margin: 8px 0 0 0;
-  padding-left: 24px;
-  color: #333;
+.vote-card.vote-yes {
+  background: #f0fff0;
+  border-color: #a5d6a7;
 }
 
-.parsed-ranking li {
-  margin: 4px 0;
+.vote-card.vote-no {
+  background: #fff8f0;
+  border-color: #ffcc80;
+}
+
+.vote-model {
   font-family: monospace;
-  font-size: 13px;
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 4px;
 }
 
-.rank-count {
-  color: #999;
+.vote-result {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.vote-yes .vote-result {
+  color: #2e7d32;
+}
+
+.vote-no .vote-result {
+  color: #e65100;
+}
+
+.vote-explanation {
+  margin-top: 8px;
   font-size: 12px;
+  color: #666;
+  line-height: 1.4;
 }

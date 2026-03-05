@@ -1,335 +1,398 @@
-"""3-stage LLM Council orchestration."""
+"""LLM Council orchestration with iterative consensus, expert roles, and metrics."""
 
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from .openrouter import query_models_parallel, query_model
-from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
+from .config import COUNCIL_MODELS, CHAIRMAN_MODEL, DEFAULT_CONSENSUS_CONFIG, MODEL_COSTS
 
 
-async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
-    """
-    Stage 1: Collect individual responses from all council models.
+def _build_role_prefix(model: str, roles: Dict[str, str]) -> str:
+    """Build a role instruction prefix for a model."""
+    role = roles.get(model, "")
+    if role:
+        return f"You are acting as: {role}. Respond from this expert perspective.\n\n"
+    return ""
 
-    Args:
-        user_query: The user's question
 
-    Returns:
-        List of dicts with 'model' and 'response' keys
-    """
-    messages = [{"role": "user", "content": user_query}]
+def _estimate_cost(model: str, tokens: Dict[str, int]) -> float:
+    """Estimate cost in USD for a model query."""
+    costs = MODEL_COSTS.get(model, {"input": 0, "output": 0})
+    input_cost = (tokens.get("input", 0) / 1_000_000) * costs["input"]
+    output_cost = (tokens.get("output", 0) / 1_000_000) * costs["output"]
+    return round(input_cost + output_cost, 6)
+
+
+def _extract_metrics(model: str, response: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Extract token/cost/latency metrics from a response."""
+    if response is None:
+        return {"tokens": {"input": 0, "output": 0}, "latency_ms": 0, "cost_usd": 0}
+    tokens = response.get("tokens", {"input": 0, "output": 0})
+    return {
+        "tokens": tokens,
+        "latency_ms": response.get("latency_ms", 0),
+        "cost_usd": _estimate_cost(model, tokens),
+    }
+
+
+async def stage1_collect_responses(
+    user_query: str,
+    council_models: List[str] = None,
+    roles: Dict[str, str] = None,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Stage 1: Collect individual responses. Returns (results, metrics)."""
+    models = council_models or COUNCIL_MODELS
+    roles = roles or {}
+
+    messages_per_model = {}
+    for model in models:
+        prefix = _build_role_prefix(model, roles)
+        content = f"{prefix}{user_query}" if prefix else user_query
+        messages_per_model[model] = [{"role": "user", "content": content}]
 
     # Query all models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages)
+    import asyncio
+    tasks = [query_model(m, messages_per_model[m]) for m in models]
+    raw_responses = await asyncio.gather(*tasks)
+    responses = {m: r for m, r in zip(models, raw_responses)}
 
-    # Format results
     stage1_results = []
+    stage1_metrics = {}
     for model, response in responses.items():
-        if response is not None:  # Only include successful responses
+        metrics = _extract_metrics(model, response)
+        stage1_metrics[model] = metrics
+        if response is not None:
             stage1_results.append({
                 "model": model,
-                "response": response.get('content', '')
+                "response": response.get("content", ""),
+                "role": roles.get(model, ""),
             })
 
-    return stage1_results
+    return stage1_results, stage1_metrics
 
 
-async def stage2_collect_rankings(
+async def _revise_responses(
     user_query: str,
-    stage1_results: List[Dict[str, Any]]
-) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
-    """
-    Stage 2: Each model ranks the anonymized responses.
+    current_responses: List[Dict[str, Any]],
+    round_num: int,
+    roles: Dict[str, str] = None,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Ask each model to revise. Returns (revised_responses, metrics)."""
+    roles = roles or {}
+    revised = []
+    metrics = {}
 
-    Args:
-        user_query: The original user query
-        stage1_results: Results from Stage 1
+    for target in current_responses:
+        others_text = "\n\n".join([
+            f"**{r['model'].split('/')[1]}**: {r['response']}"
+            for r in current_responses if r['model'] != target['model']
+        ])
 
-    Returns:
-        Tuple of (rankings list, label_to_model mapping)
-    """
-    # Create anonymized labels for responses (Response A, Response B, etc.)
-    labels = [chr(65 + i) for i in range(len(stage1_results))]  # A, B, C, ...
-
-    # Create mapping from label to model name
-    label_to_model = {
-        f"Response {label}": result['model']
-        for label, result in zip(labels, stage1_results)
-    }
-
-    # Build the ranking prompt
-    responses_text = "\n\n".join([
-        f"Response {label}:\n{result['response']}"
-        for label, result in zip(labels, stage1_results)
-    ])
-
-    ranking_prompt = f"""You are evaluating different responses to the following question:
+        role_prefix = _build_role_prefix(target['model'], roles)
+        prompt = f"""{role_prefix}You are in round {round_num} of a council deliberation on this question:
 
 Question: {user_query}
 
-Here are the responses from different models (anonymized):
+Your previous answer:
+{target['response']}
 
-{responses_text}
+Other council members' answers:
+{others_text}
 
-Your task:
-1. First, evaluate each response individually. For each response, explain what it does well and what it does poorly.
-2. Then, at the very end of your response, provide a final ranking.
+Consider the other perspectives carefully. Revise your answer to incorporate valid points from others while maintaining accuracy. If you already agree with the group consensus, restate it clearly. Aim to converge on the best possible answer.
 
-IMPORTANT: Your final ranking MUST be formatted EXACTLY as follows:
-- Start with the line "FINAL RANKING:" (all caps, with colon)
-- Then list the responses from best to worst as a numbered list
-- Each line should be: number, period, space, then ONLY the response label (e.g., "1. Response A")
-- Do not add any other text or explanations in the ranking section
+Provide your revised answer:"""
 
-Example of the correct format for your ENTIRE response:
+        messages = [{"role": "user", "content": prompt}]
+        response = await query_model(target['model'], messages)
+        metrics[target['model']] = _extract_metrics(target['model'], response)
 
-Response A provides good detail on X but misses Y...
-Response B is accurate but lacks depth on Z...
-Response C offers the most comprehensive answer...
-
-FINAL RANKING:
-1. Response C
-2. Response A
-3. Response B
-
-Now provide your evaluation and ranking:"""
-
-    messages = [{"role": "user", "content": ranking_prompt}]
-
-    # Get rankings from all council models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages)
-
-    # Format results
-    stage2_results = []
-    for model, response in responses.items():
         if response is not None:
-            full_text = response.get('content', '')
-            parsed = parse_ranking_from_text(full_text)
-            stage2_results.append({
-                "model": model,
-                "ranking": full_text,
-                "parsed_ranking": parsed
+            revised.append({
+                "model": target['model'],
+                "response": response.get("content", ""),
+                "role": target.get("role", ""),
             })
+        else:
+            revised.append(target)
 
-    return stage2_results, label_to_model
+    return revised, metrics
 
 
-async def stage3_synthesize_final(
+async def _check_agreement(
+    user_query: str,
+    current_responses: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Check if models agree. Returns (votes, metrics)."""
+    all_responses_text = "\n\n".join([
+        f"**{r['model'].split('/')[1]}**: {r['response']}"
+        for r in current_responses
+    ])
+
+    votes = []
+    metrics = {}
+    for target in current_responses:
+        prompt = f"""You are evaluating whether a council of AI models has reached consensus on this question:
+
+Question: {user_query}
+
+All current responses:
+{all_responses_text}
+
+Do all responses substantially agree on the core answer? Minor wording differences are fine — focus on whether the key conclusions, facts, and recommendations align.
+
+You MUST reply with exactly one word on the first line: YES or NO
+Then optionally explain briefly."""
+
+        messages = [{"role": "user", "content": prompt}]
+        response = await query_model(target['model'], messages, timeout=30.0)
+        metrics[target['model']] = _extract_metrics(target['model'], response)
+
+        vote = "NO"
+        explanation = ""
+        if response is not None:
+            text = response.get("content", "").strip()
+            first_line = text.split('\n')[0].strip().upper()
+            if first_line.startswith("YES"):
+                vote = "YES"
+            explanation = '\n'.join(text.split('\n')[1:]).strip()
+
+        votes.append({
+            "model": target['model'],
+            "vote": vote,
+            "explanation": explanation,
+        })
+
+    return votes, metrics
+
+
+def _check_consensus(votes: List[Dict[str, Any]], round_num: int, config: Dict) -> bool:
+    """Check if consensus is reached based on round number."""
+    yes_count = sum(1 for v in votes if v['vote'] == 'YES')
+    total = len(votes)
+    if total == 0:
+        return False
+
+    unanimous_rounds = config.get("unanimous_rounds", 3)
+    if round_num <= unanimous_rounds:
+        return yes_count == total
+    else:
+        return yes_count >= (2 * total) / 3
+
+
+async def run_consensus_loop(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
-    stage2_results: List[Dict[str, Any]]
+    on_round_complete=None,
+    council_models: List[str] = None,
+    chairman_model: str = None,
+    roles: Dict[str, str] = None,
+    consensus_config: Dict = None,
 ) -> Dict[str, Any]:
-    """
-    Stage 3: Chairman synthesizes final response.
+    """Run the consensus loop with metrics tracking."""
+    config = consensus_config or DEFAULT_CONSENSUS_CONFIG
+    max_rounds = config.get("max_rounds", 5)
+    chairman = chairman_model or CHAIRMAN_MODEL
+    roles = roles or {}
 
-    Args:
-        user_query: The original user query
-        stage1_results: Individual model responses from Stage 1
-        stage2_results: Rankings from Stage 2
+    current_responses = stage1_results
+    rounds_data = []
+    all_metrics = []
 
-    Returns:
-        Dict with 'model' and 'response' keys
-    """
-    # Build comprehensive context for chairman
-    stage1_text = "\n\n".join([
-        f"Model: {result['model']}\nResponse: {result['response']}"
-        for result in stage1_results
-    ])
+    for round_num in range(1, max_rounds + 1):
+        round_metrics = {}
 
-    stage2_text = "\n\n".join([
-        f"Model: {result['model']}\nRanking: {result['ranking']}"
-        for result in stage2_results
-    ])
+        if round_num > 1:
+            current_responses, revision_metrics = await _revise_responses(
+                user_query, current_responses, round_num, roles
+            )
+            round_metrics["revision"] = revision_metrics
 
-    chairman_prompt = f"""You are the Chairman of an LLM Council. Multiple AI models have provided responses to a user's question, and then ranked each other's responses.
+        votes, vote_metrics = await _check_agreement(user_query, current_responses)
+        round_metrics["voting"] = vote_metrics
 
-Original Question: {user_query}
+        consensus = _check_consensus(votes, round_num, config)
+        unanimous_rounds = config.get("unanimous_rounds", 3)
+        threshold = "unanimous" if round_num <= unanimous_rounds else "2/3 majority"
 
-STAGE 1 - Individual Responses:
-{stage1_text}
-
-STAGE 2 - Peer Rankings:
-{stage2_text}
-
-Your task as Chairman is to synthesize all of this information into a single, comprehensive, accurate answer to the user's original question. Consider:
-- The individual responses and their insights
-- The peer rankings and what they reveal about response quality
-- Any patterns of agreement or disagreement
-
-Provide a clear, well-reasoned final answer that represents the council's collective wisdom:"""
-
-    messages = [{"role": "user", "content": chairman_prompt}]
-
-    # Query the chairman model
-    response = await query_model(CHAIRMAN_MODEL, messages)
-
-    if response is None:
-        # Fallback if chairman fails
-        return {
-            "model": CHAIRMAN_MODEL,
-            "response": "Error: Unable to generate final synthesis."
+        round_data = {
+            "round": round_num,
+            "responses": current_responses,
+            "votes": votes,
+            "consensus_reached": consensus,
+            "threshold": threshold,
+            "metrics": round_metrics,
         }
+        rounds_data.append(round_data)
+        all_metrics.append(round_metrics)
 
+        if on_round_complete:
+            await on_round_complete(round_data)
+
+        if consensus:
+            final, final_metrics = await _synthesize_consensus(user_query, current_responses, chairman)
+            consensus_type = "unanimous" if round_num <= unanimous_rounds else "majority"
+            return {
+                "rounds": rounds_data,
+                "consensus_reached": True,
+                "final_round": round_num,
+                "consensus_type": consensus_type,
+                "final_answer": final,
+                "metrics": _aggregate_metrics(all_metrics, final_metrics),
+            }
+
+    # Chairman decides
+    chairman_answer, final_metrics = await _chairman_decides(user_query, current_responses, rounds_data, chairman)
     return {
-        "model": CHAIRMAN_MODEL,
-        "response": response.get('content', '')
+        "rounds": rounds_data,
+        "consensus_reached": False,
+        "final_round": None,
+        "consensus_type": "chairman",
+        "final_answer": chairman_answer,
+        "metrics": _aggregate_metrics(all_metrics, final_metrics),
     }
 
 
-def parse_ranking_from_text(ranking_text: str) -> List[str]:
-    """
-    Parse the FINAL RANKING section from the model's response.
+def _aggregate_metrics(round_metrics: List[Dict], final_metrics: Dict) -> Dict[str, Any]:
+    """Aggregate all metrics across rounds into a summary."""
+    per_model = {}
+    total_cost = 0
+    total_tokens = {"input": 0, "output": 0}
+    total_latency = 0
 
-    Args:
-        ranking_text: The full text response from the model
+    for rm in round_metrics:
+        for phase in ["revision", "voting"]:
+            phase_data = rm.get(phase, {})
+            for model, m in phase_data.items():
+                if model not in per_model:
+                    per_model[model] = {"tokens": {"input": 0, "output": 0}, "cost_usd": 0, "latency_ms": 0, "calls": 0}
+                per_model[model]["tokens"]["input"] += m["tokens"]["input"]
+                per_model[model]["tokens"]["output"] += m["tokens"]["output"]
+                per_model[model]["cost_usd"] += m["cost_usd"]
+                per_model[model]["latency_ms"] += m["latency_ms"]
+                per_model[model]["calls"] += 1
+                total_cost += m["cost_usd"]
+                total_tokens["input"] += m["tokens"]["input"]
+                total_tokens["output"] += m["tokens"]["output"]
+                total_latency += m["latency_ms"]
 
-    Returns:
-        List of response labels in ranked order
-    """
-    import re
+    # Add final synthesis metrics
+    for model, m in final_metrics.items():
+        if model not in per_model:
+            per_model[model] = {"tokens": {"input": 0, "output": 0}, "cost_usd": 0, "latency_ms": 0, "calls": 0}
+        per_model[model]["tokens"]["input"] += m["tokens"]["input"]
+        per_model[model]["tokens"]["output"] += m["tokens"]["output"]
+        per_model[model]["cost_usd"] += m["cost_usd"]
+        per_model[model]["latency_ms"] += m["latency_ms"]
+        per_model[model]["calls"] += 1
+        total_cost += m["cost_usd"]
+        total_tokens["input"] += m["tokens"]["input"]
+        total_tokens["output"] += m["tokens"]["output"]
+        total_latency += m["latency_ms"]
 
-    # Look for "FINAL RANKING:" section
-    if "FINAL RANKING:" in ranking_text:
-        # Extract everything after "FINAL RANKING:"
-        parts = ranking_text.split("FINAL RANKING:")
-        if len(parts) >= 2:
-            ranking_section = parts[1]
-            # Try to extract numbered list format (e.g., "1. Response A")
-            # This pattern looks for: number, period, optional space, "Response X"
-            numbered_matches = re.findall(r'\d+\.\s*Response [A-Z]', ranking_section)
-            if numbered_matches:
-                # Extract just the "Response X" part
-                return [re.search(r'Response [A-Z]', m).group() for m in numbered_matches]
-
-            # Fallback: Extract all "Response X" patterns in order
-            matches = re.findall(r'Response [A-Z]', ranking_section)
-            return matches
-
-    # Fallback: try to find any "Response X" patterns in order
-    matches = re.findall(r'Response [A-Z]', ranking_text)
-    return matches
-
-
-def calculate_aggregate_rankings(
-    stage2_results: List[Dict[str, Any]],
-    label_to_model: Dict[str, str]
-) -> List[Dict[str, Any]]:
-    """
-    Calculate aggregate rankings across all models.
-
-    Args:
-        stage2_results: Rankings from each model
-        label_to_model: Mapping from anonymous labels to model names
-
-    Returns:
-        List of dicts with model name and average rank, sorted best to worst
-    """
-    from collections import defaultdict
-
-    # Track positions for each model
-    model_positions = defaultdict(list)
-
-    for ranking in stage2_results:
-        ranking_text = ranking['ranking']
-
-        # Parse the ranking from the structured format
-        parsed_ranking = parse_ranking_from_text(ranking_text)
-
-        for position, label in enumerate(parsed_ranking, start=1):
-            if label in label_to_model:
-                model_name = label_to_model[label]
-                model_positions[model_name].append(position)
-
-    # Calculate average position for each model
-    aggregate = []
-    for model, positions in model_positions.items():
-        if positions:
-            avg_rank = sum(positions) / len(positions)
-            aggregate.append({
-                "model": model,
-                "average_rank": round(avg_rank, 2),
-                "rankings_count": len(positions)
-            })
-
-    # Sort by average rank (lower is better)
-    aggregate.sort(key=lambda x: x['average_rank'])
-
-    return aggregate
+    return {
+        "per_model": {k: {**v, "cost_usd": round(v["cost_usd"], 6)} for k, v in per_model.items()},
+        "total_cost_usd": round(total_cost, 6),
+        "total_tokens": total_tokens,
+        "total_latency_ms": total_latency,
+    }
 
 
-async def generate_conversation_title(user_query: str) -> str:
-    """
-    Generate a short title for a conversation based on the first user message.
+async def _synthesize_consensus(
+    user_query: str,
+    agreed_responses: List[Dict[str, Any]],
+    chairman: str,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Synthesize consensus answer. Returns (result, metrics)."""
+    responses_text = "\n\n".join([
+        f"**{r['model'].split('/')[1]}**: {r['response']}"
+        for r in agreed_responses
+    ])
 
-    Args:
-        user_query: The first user message
-
-    Returns:
-        A short title (3-5 words)
-    """
-    title_prompt = f"""Generate a very short title (3-5 words maximum) that summarizes the following question.
-The title should be concise and descriptive. Do not use quotes or punctuation in the title.
+    prompt = f"""The council has reached consensus on this question:
 
 Question: {user_query}
 
-Title:"""
+All council members' agreed responses:
+{responses_text}
 
-    messages = [{"role": "user", "content": title_prompt}]
+Synthesize these into a single, clear, comprehensive answer that captures the consensus:"""
 
-    # Use gemini-2.5-flash for title generation (fast and cheap)
-    response = await query_model("google/gemini-2.5-flash", messages, timeout=30.0)
+    messages = [{"role": "user", "content": prompt}]
+    response = await query_model(chairman, messages)
+    metrics = {chairman: _extract_metrics(chairman, response)}
 
     if response is None:
-        # Fallback to a generic title
+        return {
+            "model": chairman,
+            "response": agreed_responses[0]["response"] if agreed_responses else "Error generating synthesis."
+        }, metrics
+
+    return {
+        "model": chairman,
+        "response": response.get("content", "")
+    }, metrics
+
+
+async def _chairman_decides(
+    user_query: str,
+    final_responses: List[Dict[str, Any]],
+    rounds_data: List[Dict[str, Any]],
+    chairman: str,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Chairman makes final decision. Returns (result, metrics)."""
+    responses_text = "\n\n".join([
+        f"**{r['model'].split('/')[1]}**: {r['response']}"
+        for r in final_responses
+    ])
+
+    rounds_summary = ""
+    for rd in rounds_data:
+        yes_count = sum(1 for v in rd['votes'] if v['vote'] == 'YES')
+        total = len(rd['votes'])
+        rounds_summary += f"Round {rd['round']} ({rd['threshold']}): {yes_count}/{total} agreed\n"
+
+    prompt = f"""You are the Chairman of an LLM Council. The council failed to reach consensus after {len(rounds_data)} rounds of deliberation.
+
+Question: {user_query}
+
+Deliberation summary:
+{rounds_summary}
+
+Final responses from council members:
+{responses_text}
+
+As Chairman, you have the deciding vote. Provide the definitive answer, weighing all perspectives and the deliberation history:"""
+
+    messages = [{"role": "user", "content": prompt}]
+    response = await query_model(chairman, messages)
+    metrics = {chairman: _extract_metrics(chairman, response)}
+
+    if response is None:
+        return {
+            "model": chairman,
+            "response": "Error: Unable to generate chairman's decision."
+        }, metrics
+
+    return {
+        "model": chairman,
+        "response": response.get("content", "")
+    }, metrics
+
+
+async def generate_conversation_title(user_query: str, council_models: List[str] = None) -> str:
+    """Generate a short title for a conversation."""
+    models = council_models or COUNCIL_MODELS
+    title_prompt = """Generate a very short title (3-5 words maximum) that summarizes the following question.
+The title should be concise and descriptive. Do not use quotes or punctuation in the title.
+
+Question: """ + user_query + "\n\nTitle:"
+
+    messages = [{"role": "user", "content": title_prompt}]
+    response = await query_model(models[0], messages, timeout=30.0)
+
+    if response is None:
         return "New Conversation"
 
-    title = response.get('content', 'New Conversation').strip()
-
-    # Clean up the title - remove quotes, limit length
-    title = title.strip('"\'')
-
-    # Truncate if too long
+    title = response.get("content", "New Conversation").strip().strip('"\'')
     if len(title) > 50:
         title = title[:47] + "..."
-
     return title
-
-
-async def run_full_council(user_query: str) -> Tuple[List, List, Dict, Dict]:
-    """
-    Run the complete 3-stage council process.
-
-    Args:
-        user_query: The user's question
-
-    Returns:
-        Tuple of (stage1_results, stage2_results, stage3_result, metadata)
-    """
-    # Stage 1: Collect individual responses
-    stage1_results = await stage1_collect_responses(user_query)
-
-    # If no models responded successfully, return error
-    if not stage1_results:
-        return [], [], {
-            "model": "error",
-            "response": "All models failed to respond. Please try again."
-        }, {}
-
-    # Stage 2: Collect rankings
-    stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results)
-
-    # Calculate aggregate rankings
-    aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
-
-    # Stage 3: Synthesize final answer
-    stage3_result = await stage3_synthesize_final(
-        user_query,
-        stage1_results,
-        stage2_results
-    )
-
-    # Prepare metadata
-    metadata = {
-        "label_to_model": label_to_model,
-        "aggregate_rankings": aggregate_rankings
-    }
-
-    return stage1_results, stage2_results, stage3_result, metadata

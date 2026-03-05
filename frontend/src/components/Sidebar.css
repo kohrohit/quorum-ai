@@ -12,10 +12,34 @@
   border-bottom: 1px solid #e0e0e0;
 }
 
+.sidebar-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
 .sidebar-header h1 {
   font-size: 18px;
-  margin: 0 0 12px 0;
+  margin: 0;
   color: #333;
+}
+
+.settings-btn {
+  padding: 5px 10px;
+  background: none;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  color: #666;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.settings-btn:hover {
+  background: #f0f0f0;
+  border-color: #4a90e2;
+  color: #4a90e2;
 }
 
 .new-conversation-btn {
@@ -72,7 +96,28 @@
   margin-bottom: 4px;
 }
 
+.conversation-item-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 .conversation-meta {
   color: #999;
   font-size: 12px;
+}
+
+.export-btn {
+  padding: 2px 8px;
+  background: none;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  color: #888;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.export-btn:hover {
+  border-color: #4a90e2;
+  color: #4a90e2;
 }
