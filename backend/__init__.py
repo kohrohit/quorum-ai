@@ -1,1 +1,1 @@
-"""LLM Council backend package."""
+"""Quorum AI backend package."""

@@ -12,7 +12,7 @@ export default function Sidebar({
     <div className="sidebar">
       <div className="sidebar-header">
         <div className="sidebar-title-row">
-          <h1>LLM Council</h1>
+          <h1>Quorum AI</h1>
           <button className="settings-btn" onClick={onOpenSettings} title="Council Settings">
             Settings
           </button>

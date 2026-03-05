@@ -1,4 +1,4 @@
-"""LLM Council orchestration with iterative consensus, expert roles, and metrics."""
+"""Quorum AI orchestration with iterative consensus, expert roles, and metrics."""
 
 from typing import List, Dict, Any, Tuple, Optional
 from .openrouter import query_models_parallel, query_model
@@ -350,7 +350,7 @@ async def _chairman_decides(
         total = len(rd['votes'])
         rounds_summary += f"Round {rd['round']} ({rd['threshold']}): {yes_count}/{total} agreed\n"
 
-    prompt = f"""You are the Chairman of an LLM Council. The council failed to reach consensus after {len(rounds_data)} rounds of deliberation.
+    prompt = f"""You are the Chairman of a Quorum AI council. The council failed to reach consensus after {len(rounds_data)} rounds of deliberation.
 
 Question: {user_query}
 
